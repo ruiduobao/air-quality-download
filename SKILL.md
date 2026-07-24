@@ -1,15 +1,12 @@
 ---
-name: air-quality-download
-display_name: 空气质量数据下载工具
-version: 0.1.0
-author: ruiduobao
-license: MIT-0
-description: |
-  Download air quality data (PM2.5, PM10, O3, NO2, SO2, CO) from Open-Meteo
+description: 'Download air quality data (PM2.5, PM10, O3, NO2, SO2, CO) from Open-Meteo
+
   Air Quality API (free, no key). Supports current, historical, and forecast
+
   data with hourly/daily/monthly aggregation.
-runtime: python>=3.8
-tags: [gis, air-quality, pm25, pm10, open-meteo, environment]
+
+  '
+name: air-quality-download
 ---
 
 # air-quality-download
@@ -207,7 +204,7 @@ plt.savefig("air_quality_timeseries.png", dpi=150)
 ### Batch Multi-City Download
 ```bash
 for city in "北京" "上海" "广州"; do
-  python scripts/air_quality_download.py download     --city "$city" --pollutant PM2.5     --start 2023-01-01 --end 2023-12-31     --output aqi_${city}_2023.csv
+  python scripts\air-quality-download.py download     --city "$city" --pollutant PM2.5     --start 2023-01-01 --end 2023-12-31     --output aqi_${city}_2023.csv
   sleep 1
 done
 ```
@@ -229,7 +226,7 @@ jobs:
           python-version: '3.11'
       - run: pip install requests
       - run: |
-          python scripts/air_quality_download.py download \
+          python scripts\air-quality-download.py download \
             --city 北京 --pollutant PM2.5 \
             --start $(date -d '7 days ago' +%Y-%m-%d) \
             --end $(date +%Y-%m-%d) \
@@ -238,7 +235,7 @@ jobs:
 
 ### PostgreSQL Import
 ```bash
-python scripts/air_quality_download.py download   --city 北京 --pollutant PM2.5   --start 2023-01-01 --end 2023-12-31   --output aqi.csv
+python scripts\air-quality-download.py download   --city 北京 --pollutant PM2.5   --start 2023-01-01 --end 2023-12-31   --output aqi.csv
 
 psql -d gis_db -c "\COPY air_quality(city, date, pm25, pm10, o3, no2, so2, co) FROM 'aqi.csv' CSV HEADER"
 ```
