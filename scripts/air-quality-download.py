@@ -1,0 +1,479 @@
+#!/usr/bin/env python3
+"""
+air-quality-download: Air Quality Data Downloader
+===================================================
+Download air quality data (PM2.5, PM10, O3, NO2, SO2, CO) from
+Open-Meteo Air Quality API (free, no key) and WAQI.
+
+Privacy Disclosure:
+- Open-Meteo: latitude, longitude, date range, and pollutant selection
+  are sent to air-quality-api.open-meteo.com via HTTPS.
+- No API key or personal identifiers required.
+- WAQI: requires a free token (register at https://aqicn.org/data-platform/token/).
+  Token is sent to api.waqi.net via HTTPS.
+
+Data Source:
+- Open-Meteo Air Quality (https://open-meteo.com/) — CC BY 4.0
+- WAQI (https://aqicn.org/) — Various licenses
+
+License: MIT-0 (No attribution required)
+Author: ruiduobao
+Version: 0.1.0
+"""
+
+import argparse
+import sys
+import os
+import json
+import csv
+from datetime import datetime, timedelta
+from typing import Optional, List, Dict
+
+try:
+    import requests
+except ImportError:
+    print("ERROR: 'requests' is required. Install with: pip install requests>=2.28.0")
+    sys.exit(1)
+
+
+# ============================================================
+# Constants
+# ============================================================
+
+OPEN_METEO_URL = "https://air-quality-api.open-meteo.com/v1/air-quality"
+WAQI_URL = "https://api.waqi.info"
+
+POLLUTANTS = {
+    "pm2_5": {"name": "PM2.5", "unit": "µg/m³"},
+    "pm10": {"name": "PM10", "unit": "µg/m³"},
+    "ozone": {"name": "Ozone (O3)", "unit": "µg/m³"},
+    "nitrogen_dioxide": {"name": "Nitrogen Dioxide (NO2)", "unit": "µg/m³"},
+    "sulphur_dioxide": {"name": "Sulphur Dioxide (SO2)", "unit": "µg/m³"},
+    "carbon_monoxide": {"name": "Carbon Monoxide (CO)", "unit": "µg/m³"},
+}
+
+AQI_LEVELS = [
+    (0, 50, "Good", "green"),
+    (51, 100, "Moderate", "yellow"),
+    (101, 150, "Unhealthy for Sensitive Groups", "orange"),
+    (151, 200, "Unhealthy", "red"),
+    (201, 300, "Very Unhealthy", "purple"),
+    (301, 500, "Hazardous", "maroon"),
+]
+
+
+# ============================================================
+# Open-Meteo API
+# ============================================================
+
+def fetch_open_meteo(
+    lat: float,
+    lon: float,
+    pollutants: List[str],
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+    forecast_days: Optional[int] = None,
+) -> Dict:
+    """Fetch air quality data from Open-Meteo API.
+
+    Args:
+        lat: Latitude (-90 to 90)
+        lon: Longitude (-180 to 180)
+        pollutants: List of pollutant keys
+        start: Start date (YYYY-MM-DD) for historical
+        end: End date (YYYY-MM-DD) for historical
+        forecast_days: Number of forecast days (1-16)
+
+    Returns:
+        API response dict
+    """
+    # Build hourly parameters
+    hourly_params = ",".join(pollutants)
+
+    params = {
+        "latitude": lat,
+        "longitude": lon,
+        "hourly": hourly_params,
+    }
+
+    if start and end:
+        params["start_date"] = start
+        params["end_date"] = end
+    elif forecast_days:
+        params["forecast_days"] = min(forecast_days, 16)
+
+    print(f"Querying Open-Meteo Air Quality API...")
+    print(f"  Location: ({lat}, {lon})")
+    if start and end:
+        print(f"  Period: {start} to {end}")
+    elif forecast_days:
+        print(f"  Forecast: {forecast_days} days")
+    print(f"  Pollutants: {', '.join(POLLUTANTS.get(p, {}).get("name", p) for p in pollutants)}")
+
+    try:
+        resp = requests.get(OPEN_METEO_URL, params=params, timeout=60)
+        resp.raise_for_status()
+    except requests.exceptions.Timeout:
+        print("ERROR: Request timed out. Try a shorter date range.")
+        sys.exit(1)
+    except requests.exceptions.ConnectionError:
+        print("ERROR: Connection failed. Check your internet connection.")
+        sys.exit(1)
+    except requests.exceptions.HTTPError as e:
+        print(f"ERROR: HTTP {resp.status_code}: {e}")
+        if resp.status_code == 400:
+            print("  Hint: Check coordinates and date range are valid.")
+        sys.exit(1)
+
+    data = resp.json()
+
+    if "hourly" not in data:
+        print("ERROR: Unexpected API response format.")
+        print(f"  Response keys: {list(data.keys())}")
+        if "reason" in data:
+            print(f"  Reason: {data['reason']}")
+        sys.exit(1)
+
+    return data
+
+
+def parse_open_meteo_response(data: Dict, pollutants: List[str]) -> List[Dict]:
+    """Parse Open-Meteo hourly response into list of records."""
+    hourly = data.get("hourly", {})
+    times = hourly.get("time", [])
+
+    if not times:
+        print("WARNING: No data returned.")
+        return []
+
+    records = []
+    for i, t in enumerate(times):
+        record = {"datetime": t, "date": t[:10], "hour": t[11:13]}
+        for p in pollutants:
+            val = hourly.get(p, [None] * len(times))[i]
+            record[p] = val
+        records.append(record)
+
+    return records
+
+
+# ============================================================
+# WAQI API
+# ============================================================
+
+def fetch_waqi_current(token: str, city: str) -> Dict:
+    """Fetch current air quality from WAQI API.
+
+    Args:
+        token: WAQI API token
+        city: City name or station ID
+
+    Returns:
+        API response dict
+    """
+    url = f"{WAQI_URL}/feed/{city}/"
+    params = {"token": token}
+
+    print(f"Querying WAQI for: {city}")
+
+    try:
+        resp = requests.get(url, params=params, timeout=30)
+        resp.raise_for_status()
+    except requests.exceptions.RequestException as e:
+        print(f"ERROR: Request failed: {e}")
+        sys.exit(1)
+
+    data = resp.json()
+
+    if data.get("status") != "ok":
+        print(f"ERROR: WAQI API error: {data.get('data', 'Unknown error')}")
+        sys.exit(1)
+
+    return data
+
+
+# ============================================================
+# Aggregation
+# ============================================================
+
+def aggregate_daily(records: List[Dict], pollutants: List[str]) -> List[Dict]:
+    """Aggregate hourly records to daily averages."""
+    daily = {}
+    for rec in records:
+        date = rec["date"]
+        if date not in daily:
+            daily[date] = {"date": date}
+            for p in pollutants:
+                daily[date][f"{p}_values"] = []
+
+        for p in pollutants:
+            val = rec.get(p)
+            if val is not None:
+                daily[date][f"{p}_values"].append(val)
+
+    results = []
+    for date in sorted(daily.keys()):
+        rec = {"date": date}
+        for p in pollutants:
+            vals = daily[date].get(f"{p}_values", [])
+            if vals:
+                rec[p] = round(sum(vals) / len(vals), 2)
+                rec[f"{p}_min"] = round(min(vals), 2)
+                rec[f"{p}_max"] = round(max(vals), 2)
+            else:
+                rec[p] = None
+                rec[f"{p}_min"] = None
+                rec[f"{p}_max"] = None
+        results.append(rec)
+
+    return results
+
+
+# ============================================================
+# Output
+# ============================================================
+
+def write_output(records: List[Dict], output_path: str, as_json: bool = False):
+    """Write records to CSV or JSON."""
+    if not records:
+        print("WARNING: No records to write.")
+        return
+
+    if as_json or output_path.endswith(".json"):
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(records, f, indent=2, ensure_ascii=False)
+    else:
+        fieldnames = records[0].keys()
+        with open(output_path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(records)
+
+    print(f"Output saved to: {output_path} ({len(records)} records)")
+
+
+# ============================================================
+# CLI Subcommands
+# ============================================================
+
+def cmd_current(args):
+    """Get current air quality."""
+    if not (-90 <= args.lat <= 90):
+        print(f"ERROR: Latitude {args.lat} out of range [-90, 90].")
+        sys.exit(1)
+    if not (-180 <= args.lon <= 180):
+        print(f"ERROR: Longitude {args.lon} out of range [-180, 180].")
+        sys.exit(1)
+
+    pollutants = args.pollutants.split(",") if args.pollutants else ["pm2_5", "pm10"]
+    # Validate pollutants
+    for p in pollutants:
+        if p not in POLLUTANTS:
+            print(f"ERROR: Unknown pollutant '{p}'. Valid: {', '.join(POLLUTANTS.keys())}")
+            sys.exit(1)
+
+    data = fetch_open_meteo(args.lat, args.lon, pollutants, forecast_days=1)
+    records = parse_open_meteo_response(data, pollutants)
+
+    if not records:
+        print("ERROR: No data returned.")
+        sys.exit(1)
+
+    # Get the first (current) record
+    current = records[0]
+    print("\nCurrent Air Quality:")
+    print(f"  Location: ({args.lat}, {args.lon})")
+    print(f"  Time: {current['datetime']}")
+    for p in pollutants:
+        val = current.get(p)
+        if val is not None:
+            name = POLLUTANTS[p]["name"]
+            unit = POLLUTANTS[p]["unit"]
+            print(f"  {name}: {val} {unit}")
+
+    # Output
+    output_path = args.output or "air_quality_current.json"
+    write_output(records[:24], output_path, as_json=output_path.endswith(".json"))
+
+
+def cmd_historical(args):
+    """Get historical air quality data."""
+    if not (-90 <= args.lat <= 90):
+        print(f"ERROR: Latitude {args.lat} out of range [-90, 90].")
+        sys.exit(1)
+    if not (-180 <= args.lon <= 180):
+        print(f"ERROR: Longitude {args.lon} out of range [-180, 180].")
+        sys.exit(1)
+
+    # Validate dates
+    try:
+        start_dt = datetime.strptime(args.start, "%Y-%m-%d")
+        end_dt = datetime.strptime(args.end, "%Y-%m-%d")
+    except ValueError:
+        print("ERROR: Invalid date format. Use YYYY-MM-DD.")
+        sys.exit(1)
+
+    if start_dt >= end_dt:
+        print("ERROR: Start date must be before end date.")
+        sys.exit(1)
+
+    if (end_dt - start_dt).days > 365:
+        print("WARNING: Date range > 365 days. Open-Meteo may limit results.")
+
+    pollutants = args.pollutants.split(",") if args.pollutants else ["pm2_5", "pm10", "ozone", "nitrogen_dioxide"]
+    for p in pollutants:
+        if p not in POLLUTANTS:
+            print(f"ERROR: Unknown pollutant '{p}'. Valid: {', '.join(POLLUTANTS.keys())}")
+            sys.exit(1)
+
+    data = fetch_open_meteo(args.lat, args.lon, pollutants, start=args.start, end=args.end)
+    records = parse_open_meteo_response(data, pollutants)
+
+    if not records:
+        print("ERROR: No data returned.")
+        sys.exit(1)
+
+    # Aggregate if requested
+    if args.aggregate == "daily":
+        output_records = aggregate_daily(records, pollutants)
+    elif args.aggregate == "monthly":
+        # Simple monthly aggregation
+        monthly = {}
+        for rec in records:
+            ym = rec["date"][:7]
+            if ym not in monthly:
+                monthly[ym] = {"month": ym}
+                for p in pollutants:
+                    monthly[ym][f"{p}_values"] = []
+            for p in pollutants:
+                val = rec.get(p)
+                if val is not None:
+                    monthly[ym][f"{p}_values"].append(val)
+
+        output_records = []
+        for ym in sorted(monthly.keys()):
+            rec = {"month": ym}
+            for p in pollutants:
+                vals = monthly[ym].get(f"{p}_values", [])
+                rec[p] = round(sum(vals) / len(vals), 2) if vals else None
+            output_records.append(rec)
+    else:
+        output_records = records
+
+    output_path = args.output or f"air_quality_{args.start}_{args.end}.csv"
+    write_output(output_records, output_path, as_json=output_path.endswith(".json"))
+
+    # Print summary
+    print(f"\nSummary ({args.aggregate or 'hourly'}):")
+    for p in pollutants:
+        vals = [r.get(p) for r in output_records if r.get(p) is not None]
+        if vals:
+            name = POLLUTANTS[p]["name"]
+            print(f"  {name}: mean={sum(vals)/len(vals):.1f}, min={min(vals):.1f}, max={max(vals):.1f}")
+
+
+def cmd_forecast(args):
+    """Get air quality forecast."""
+    if not (-90 <= args.lat <= 90):
+        print(f"ERROR: Latitude {args.lat} out of range [-90, 90].")
+        sys.exit(1)
+    if not (-180 <= args.lon <= 180):
+        print(f"ERROR: Longitude {args.lon} out of range [-180, 180].")
+        sys.exit(1)
+
+    pollutants = args.pollutants.split(",") if args.pollutants else ["pm2_5", "pm10"]
+    for p in pollutants:
+        if p not in POLLUTANTS:
+            print(f"ERROR: Unknown pollutant '{p}'. Valid: {', '.join(POLLUTANTS.keys())}")
+            sys.exit(1)
+
+    data = fetch_open_meteo(args.lat, args.lon, pollutants, forecast_days=args.days)
+    records = parse_open_meteo_response(data, pollutants)
+
+    if not records:
+        print("ERROR: No data returned.")
+        sys.exit(1)
+
+    output_path = args.output or f"air_quality_forecast_{args.days}d.csv"
+    write_output(records, output_path, as_json=output_path.endswith(".json"))
+
+    print(f"\nForecast Summary ({args.days} days):")
+    for p in pollutants:
+        vals = [r.get(p) for r in records if r.get(p) is not None]
+        if vals:
+            name = POLLUTANTS[p]["name"]
+            print(f"  {name}: mean={sum(vals)/len(vals):.1f}, min={min(vals):.1f}, max={max(vals):.1f}")
+
+
+# ============================================================
+# Main CLI
+# ============================================================
+
+def main():
+    parser = argparse.ArgumentParser(
+        prog="air-quality-download",
+        description="Air Quality Data Downloader — PM2.5, PM10, O3, NO2, SO2, CO from Open-Meteo.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Current air quality
+  python air-quality-download.py current --lat 39.9042 --lon 116.4074
+
+  # Historical data (daily aggregation)
+  python air-quality-download.py historical --lat 39.9042 --lon 116.4074 --start 2023-01-01 --end 2023-12-31 --aggregate daily
+
+  # Forecast
+  python air-quality-download.py forecast --lat 39.9042 --lon 116.4074 --days 7
+
+  # Specific pollutants
+  python air-quality-download.py current --lat 39.9042 --lon 116.4074 --pollutants pm2_5,ozone,nitrogen_dioxide
+
+Available pollutants: pm2_5, pm10, ozone, nitrogen_dioxide, sulphur_dioxide, carbon_monoxide
+        """,
+    )
+
+    subparsers = parser.add_subparsers(dest="command", help="Subcommand")
+
+    # --- current ---
+    current_parser = subparsers.add_parser("current", help="Get current air quality")
+    current_parser.add_argument("--lat", type=float, required=True, help="Latitude")
+    current_parser.add_argument("--lon", type=float, required=True, help="Longitude")
+    current_parser.add_argument("--pollutants", type=str,
+                                help="Comma-separated pollutants (default: pm2_5,pm10)")
+    current_parser.add_argument("--output", help="Output file path")
+    current_parser.set_defaults(func=cmd_current)
+
+    # --- historical ---
+    hist_parser = subparsers.add_parser("historical", help="Get historical air quality data")
+    hist_parser.add_argument("--lat", type=float, required=True, help="Latitude")
+    hist_parser.add_argument("--lon", type=float, required=True, help="Longitude")
+    hist_parser.add_argument("--start", required=True, help="Start date (YYYY-MM-DD)")
+    hist_parser.add_argument("--end", required=True, help="End date (YYYY-MM-DD)")
+    hist_parser.add_argument("--pollutants", type=str,
+                             help="Comma-separated pollutants (default: pm2_5,pm10,ozone,nitrogen_dioxide)")
+    hist_parser.add_argument("--aggregate", choices=["hourly", "daily", "monthly"],
+                             default="hourly", help="Aggregation level (default: hourly)")
+    hist_parser.add_argument("--output", help="Output file path")
+    hist_parser.set_defaults(func=cmd_historical)
+
+    # --- forecast ---
+    forecast_parser = subparsers.add_parser("forecast", help="Get air quality forecast")
+    forecast_parser.add_argument("--lat", type=float, required=True, help="Latitude")
+    forecast_parser.add_argument("--lon", type=float, required=True, help="Longitude")
+    forecast_parser.add_argument("--days", type=int, default=7, help="Forecast days (1-16, default: 7)")
+    forecast_parser.add_argument("--pollutants", type=str,
+                                 help="Comma-separated pollutants (default: pm2_5,pm10)")
+    forecast_parser.add_argument("--output", help="Output file path")
+    forecast_parser.set_defaults(func=cmd_forecast)
+
+    args = parser.parse_args()
+
+    if not args.command:
+        parser.print_help()
+        sys.exit(0)
+
+    args.func(args)
+
+
+if __name__ == "__main__":
+    main()

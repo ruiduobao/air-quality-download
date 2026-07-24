@@ -1,0 +1,9 @@
+{
+  "name": "air-quality-download",
+  "description": "GIS skill for air-quality-download",
+  "version": "0.1.0",
+  "author": "ruiduobao",
+  "skills": [
+    "air-quality-download"
+  ]
+}
