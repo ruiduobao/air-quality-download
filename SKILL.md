@@ -26,16 +26,16 @@ Download air quality data from Open-Meteo Air Quality API. No API key required. 
 
 ```bash
 # Current air quality
-python air-quality-download.py current --lat 39.9042 --lon 116.4074
+python scripts\air-quality-download.py current --lat 39.9042 --lon 116.4074
 
 # Historical data (daily aggregation)
-python air-quality-download.py historical --lat 39.9042 --lon 116.4074 --start 2023-01-01 --end 2023-12-31 --aggregate daily
+python scripts\air-quality-download.py historical --lat 39.9042 --lon 116.4074 --start 2023-01-01 --end 2023-12-31 --aggregate daily
 
 # 7-day forecast
-python air-quality-download.py forecast --lat 39.9042 --lon 116.4074 --days 7
+python scripts\air-quality-download.py forecast --lat 39.9042 --lon 116.4074 --days 7
 
 # Specific pollutants
-python air-quality-download.py current --lat 39.9042 --lon 116.4074 --pollutants pm2_5,ozone,nitrogen_dioxide
+python scripts\air-quality-download.py current --lat 39.9042 --lon 116.4074 --pollutants pm2_5,ozone,nitrogen_dioxide
 ```
 
 ## Parameters
@@ -79,7 +79,7 @@ pip install requests>=2.28.0 tqdm numpy scipy
 # Loop over multiple locations
 for lat_lon in "39.9 116.4" "31.2 121.5" "23.1 113.3"; do
   set -- $lat_lon
-  python air-quality-download.py historical --lat $1 --lon $2 --start 2023-01-01 --end 2023-12-31 --aggregate daily --output "aq_${1}_${2}.csv"
+  python scripts\air-quality-download.py historical --lat $1 --lon $2 --start 2023-01-01 --end 2023-12-31 --aggregate daily --output "aq_${1}_${2}.csv"
 done
 ```
 
@@ -116,7 +116,7 @@ done
 Calculate AQI from pollutant concentrations:
 
 ```bash
-python air-quality-download.py aqi --input pm25.csv --output aqi.csv
+python scripts\air-quality-download.py aqi --input pm25.csv --output aqi.csv
 ```
 
 Supports China HJ 633-2012 AQI standard and US EPA AQI standard (`--standard china` or `--standard us`).
@@ -126,7 +126,7 @@ Supports China HJ 633-2012 AQI standard and US EPA AQI standard (`--standard chi
 Use `--pollutants all` to download all available pollutants at once:
 
 ```bash
-python air-quality-download.py historical --lat 39.9042 --lon 116.4074 --start 2023-01-01 --end 2023-12-31 --pollutants all
+python scripts\air-quality-download.py historical --lat 39.9042 --lon 116.4074 --start 2023-01-01 --end 2023-12-31 --pollutants all
 ```
 
 ## Data Quality Flags
@@ -140,7 +140,7 @@ Open-Meteo provides quality flags when available. Check the `quality_flag` colum
 
 ```bash
 # Check data availability for a location and date range
-python air-quality-download.py check --lat 39.9042 --lon 116.4074 --start 2023-01-01 --end 2023-12-31
+python scripts\air-quality-download.py check --lat 39.9042 --lon 116.4074 --start 2023-01-01 --end 2023-12-31
 ```
 
 ## Out-of-Range Date Handling
@@ -272,7 +272,7 @@ pip install requests>=2.28.0 tqdm numpy scipy
 # Shell 循环处理多个位置
 for lat_lon in "39.9 116.4" "31.2 121.5" "23.1 113.3"; do
   set -- $lat_lon
-  python air-quality-download.py historical --lat $1 --lon $2 --start 2023-01-01 --end 2023-12-31 --aggregate daily --output "aq_${1}_${2}.csv"
+  python scripts\air-quality-download.py historical --lat $1 --lon $2 --start 2023-01-01 --end 2023-12-31 --aggregate daily --output "aq_${1}_${2}.csv"
 done
 ```
 
@@ -309,7 +309,7 @@ done
 从污染物浓度计算 AQI：
 
 ```bash
-python air-quality-download.py aqi --input pm25.csv --output aqi.csv
+python scripts\air-quality-download.py aqi --input pm25.csv --output aqi.csv
 ```
 
 支持中国 HJ 633-2012 AQI 标准和美国 EPA AQI 标准（`--standard china` 或 `--standard us`）。
@@ -319,7 +319,7 @@ python air-quality-download.py aqi --input pm25.csv --output aqi.csv
 使用 `--pollutants all` 一次下载所有可用污染物：
 
 ```bash
-python air-quality-download.py historical --lat 39.9042 --lon 116.4074 --start 2023-01-01 --end 2023-12-31 --pollutants all
+python scripts\air-quality-download.py historical --lat 39.9042 --lon 116.4074 --start 2023-01-01 --end 2023-12-31 --pollutants all
 ```
 
 ## 数据质量标记
@@ -333,7 +333,7 @@ Open-Meteo 在可用时提供质量标记。检查 CSV 输出中的 `quality_fla
 
 ```bash
 # 检查某位置和日期范围的数据可用性
-python air-quality-download.py check --lat 39.9042 --lon 116.4074 --start 2023-01-01 --end 2023-12-31
+python scripts\air-quality-download.py check --lat 39.9042 --lon 116.4074 --start 2023-01-01 --end 2023-12-31
 ```
 
 ## 超出范围日期处理
@@ -394,16 +394,16 @@ plt.savefig("air_quality_timeseries.png", dpi=150)
 
 ```bash
 # 实时空气质量
-python air-quality-download.py current --lat 39.9042 --lon 116.4074
+python scripts\air-quality-download.py current --lat 39.9042 --lon 116.4074
 
 # 历史数据（日聚合）
-python air-quality-download.py historical --lat 39.9042 --lon 116.4074 --start 2023-01-01 --end 2023-12-31 --aggregate daily
+python scripts\air-quality-download.py historical --lat 39.9042 --lon 116.4074 --start 2023-01-01 --end 2023-12-31 --aggregate daily
 
 # 7 天预报
-python air-quality-download.py forecast --lat 39.9042 --lon 116.4074 --days 7
+python scripts\air-quality-download.py forecast --lat 39.9042 --lon 116.4074 --days 7
 
 # 指定污染物
-python air-quality-download.py current --lat 39.9042 --lon 116.4074 --pollutants pm2_5,ozone,nitrogen_dioxide
+python scripts\air-quality-download.py current --lat 39.9042 --lon 116.4074 --pollutants pm2_5,ozone,nitrogen_dioxide
 ```
 
 ## 数据来源
