@@ -596,6 +596,8 @@ Available pollutants: pm2_5, pm10, ozone, nitrogen_dioxide, sulphur_dioxide, car
         parser.print_help()
         sys.exit(0)
 
-    return args.func(args)
+    args.func(args)
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    main()
