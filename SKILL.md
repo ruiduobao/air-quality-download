@@ -1,12 +1,6 @@
 ---
-description: 'Download air quality data (PM2.5, PM10, O3, NO2, SO2, CO) from Open-Meteo
-
-  Air Quality API (free, no key). Supports current, historical, and forecast
-
-  data with hourly/daily/monthly aggregation.
-
-  '
 name: air-quality-download
+description: 'Download air quality data (PM2.5, PM10, O3, NO2, SO2, CO) from Open-Meteo description: 'Download air quality data (PM2.5, PM10, O3, NO2, SO2, CO) from Open-Meteo  Air Quality API (free, no key). Supports current, historical, and forecast  data with hourly/daily/monthly aggregation.  '
 ---
 
 # air-quality-download
